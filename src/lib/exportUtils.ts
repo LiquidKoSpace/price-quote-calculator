@@ -3,9 +3,15 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
 export interface QuoteExportData {
-  products: { name: string; description: string; unitCost: number; weightKg: number; quantity: number }[];
+  products: { 
+    name: string; 
+    description: string; 
+    unitCost: number; 
+    weightKg: number; 
+    markupPercent: number;
+    quantity: number 
+  }[];
   productsTotal: number;
-  markupPercent: number;
   markupAmount: number;
   subtotal: number;
   labourIsPercent: boolean;
@@ -41,12 +47,13 @@ export const exportQuoteToPDF = (data: QuoteExportData) => {
     p.quantity.toString(),
     `${p.weightKg}kg`,
     fmt(p.unitCost),
-    fmt(p.unitCost * p.quantity),
+    `${p.markupPercent}%`,
+    fmt((p.unitCost * (1 + p.markupPercent / 100)) * p.quantity),
   ]);
 
   autoTable(doc, {
     startY: 40,
-    head: [["Product", "Qty", "Weight", "Unit Cost", "Subtotal"]],
+    head: [["Product", "Qty", "Weight", "Cost", "Markup", "Total"]],
     body: productRows,
     theme: "striped",
     headStyles: { fillColor: [245, 158, 11] }, // Amber 500
@@ -57,9 +64,9 @@ export const exportQuoteToPDF = (data: QuoteExportData) => {
   autoTable(doc, {
     startY: finalY + 10,
     body: [
-      ["Products Total", fmt(data.productsTotal)],
-      [`Markup (${data.markupPercent}%)`, fmt(data.markupAmount)],
-      ["Products + Markup", fmt(data.subtotal)],
+      ["Products Total Cost", fmt(data.productsTotal)],
+      ["Total Profit Markup", fmt(data.markupAmount)],
+      ["Selling Price of Goods", fmt(data.subtotal)],
       [
         `Labour ${data.labourIsPercent ? `(${data.labourValue}%)` : "(Flat)"}`,
         fmt(data.labourCost),
@@ -98,7 +105,8 @@ export const exportQuoteToExcel = (data: QuoteExportData) => {
     "Unit Weight (kg)": p.weightKg,
     Quantity: p.quantity,
     "Unit Cost (ZAR)": p.unitCost,
-    "Subtotal (ZAR)": p.unitCost * p.quantity,
+    "Markup %": p.markupPercent,
+    "Subtotal (Incl. Markup)": (p.unitCost * (1 + p.markupPercent / 100)) * p.quantity,
   }));
 
   const ws1 = XLSX.utils.json_to_sheet(productData);
@@ -106,9 +114,9 @@ export const exportQuoteToExcel = (data: QuoteExportData) => {
 
   // Summary Sheet
   const summaryData = [
-    { Item: "Products Total", Value: data.productsTotal },
-    { Item: `Markup (${data.markupPercent}%)`, Value: data.markupAmount },
-    { Item: "Products + Markup", Value: data.subtotal },
+    { Item: "Products Total Cost", Value: data.productsTotal },
+    { Item: "Total Profit Markup", Value: data.markupAmount },
+    { Item: "Selling Price of Goods", Value: data.subtotal },
     {
       Item: `Labour ${data.labourIsPercent ? `(${data.labourValue}%)` : "(Flat)"}`,
       Value: data.labourCost,

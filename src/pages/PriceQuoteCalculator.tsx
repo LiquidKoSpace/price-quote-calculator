@@ -30,6 +30,7 @@ interface ProductLine {
   description: string;
   unitCost: number;
   weightKg: number;
+  markupPercent: number; // Individual markup
   quantity: number;
 }
 
@@ -66,6 +67,7 @@ const emptyProduct = (): ProductLine => ({
   description: "",
   unitCost: 0,
   weightKg: 0,
+  markupPercent: 30, // Default 30%
   quantity: 1,
 });
 
@@ -163,6 +165,7 @@ const PriceQuoteCalculator = () => {
             description: d.description || "",
             unitCost: Number(d.unit_cost),
             weightKg: Number(d.weight_kg) || 0,
+            markupPercent: Number(d.markup_percent) ?? 30,
             quantity: 1,
           }));
           setSavedCatalog(formatted);
@@ -194,13 +197,14 @@ const PriceQuoteCalculator = () => {
         name: p.name.trim(),
         description: p.description,
         unit_cost: p.unitCost,
-        weight_kg: p.weightKg
+        weight_kg: p.weightKg,
+        markup_percent: p.markupPercent
       } as any);
 
       if (error) throw error;
 
       if (existingItem) {
-        setSavedCatalog(savedCatalog.map(x => x.id === dbId ? { ...x, unitCost: p.unitCost, weightKg: p.weightKg, description: p.description } : x));
+        setSavedCatalog(savedCatalog.map(x => x.id === dbId ? { ...x, unitCost: p.unitCost, weightKg: p.weightKg, description: p.description, markupPercent: p.markupPercent } : x));
         toast({ title: "Updated in Catalog", description: `"${p.name}" has been updated.` });
       } else {
         setSavedCatalog([...savedCatalog, { ...p, id: dbId, quantity: 1 }]);
@@ -238,8 +242,8 @@ const PriceQuoteCalculator = () => {
     DEFAULT_RATE_TIERS.map((t) => ({ ...t }))
   );
 
-  // Markup
-  const [markupPercent, setMarkupPercent] = useState(30);
+  // Markup removed as global state
+  // const [markupPercent, setMarkupPercent] = useState(30);
 
   // ── Derived values ─────
 
@@ -279,9 +283,15 @@ const PriceQuoteCalculator = () => {
     return calculateShippingCost(distanceKm, weight, rateTiers);
   }, [shippingOverride, customShipping, distanceKm, weight, rateTiers]);
 
-  // ── MARKUP ON PRODUCTS ONLY ──
-  const markupAmount = (markupPercent / 100) * productsTotal;
-  const subtotal = productsTotal + markupAmount; // products + markup = selling price of goods
+  // ── MARKUP & TOTALS ─────
+  
+  // Total Markup is the sum of markups for each product
+  const markupAmount = useMemo(
+    () => products.reduce((sum, p) => sum + (p.unitCost * p.quantity * (p.markupPercent / 100)), 0),
+    [products]
+  );
+  
+  const subtotal = productsTotal + markupAmount; // total cost + total profit markup
   const finalPrice = subtotal + labourCost + shippingCost;
 
   // Active rate tier
@@ -373,12 +383,11 @@ const PriceQuoteCalculator = () => {
     setDestAddr(emptyAddress());
     setOriginGeo(null);
     setDestGeo(null);
-    setWeight(1);
+    setDistanceKm(0);
+    setWeight(0);
     setShippingOverride(false);
     setCustomShipping(0);
-    setMarkupPercent(30);
     setRateTiers(DEFAULT_RATE_TIERS.map((t) => ({ ...t })));
-    setMinCharge(MINIMUM_SHIPPING_CHARGE);
   };
 
   // ── Copy Quote ─────
@@ -387,9 +396,9 @@ const PriceQuoteCalculator = () => {
     let text = "═══ PRICE QUOTE ═══\n\n";
     text += "PRODUCTS\n";
     products.forEach((p) => {
-      const sub = p.unitCost * p.quantity;
+      const sub = p.unitCost * p.quantity * (1 + p.markupPercent / 100);
       text += `  • ${p.name || "Unnamed"} (${p.weightKg}kg)${p.description ? ` — ${p.description}` : ""}\n`;
-      text += `    ${p.quantity} × ${fmt(p.unitCost)} = ${fmt(sub)}\n`;
+      text += `    ${p.quantity} × ${fmt(p.unitCost)} (+${p.markupPercent}% markup) = ${fmt(sub)}\n`;
     });
     text += `  Products Total: ${fmt(productsTotal)}\n`;
     text += `  Markup (${markupPercent}%): ${fmt(markupAmount)}\n`;
@@ -420,6 +429,7 @@ const PriceQuoteCalculator = () => {
       description: p.description,
       unitCost: p.unitCost,
       weightKg: p.weightKg,
+      markupPercent: p.markupPercent,
       quantity: p.quantity
     })),
     productsTotal,
@@ -672,49 +682,61 @@ const PriceQuoteCalculator = () => {
                   key={p.id}
                   className="bg-white/[0.03] rounded-lg p-3 border border-white/5 transition-all hover:border-white/10 space-y-3"
                 >
-                  <div className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-12 sm:col-span-4">
-                      {i === 0 && <Label className="text-xs text-gray-400 mb-1 block">Product Name</Label>}
-                      <Input
-                        id={`product-name-${p.id}`}
-                        className="bg-white/5 border-white/10 text-white placeholder:text-gray-500"
-                        placeholder="e.g. Body Lotion"
-                        value={p.name}
-                        onChange={(e) => updateProduct(p.id, "name", e.target.value)}
-                      />
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <Label className="text-xs text-gray-400 mb-1 block">Product Name</Label>
+                      <div className="relative group">
+                        <Input
+                          placeholder="Scan or type product name..."
+                          value={p.name}
+                          onChange={(e) => updateProduct(p.id, "name", e.target.value)}
+                          className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 pr-9 group-hover:border-amber-500/30 transition-colors"
+                        />
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-hover:text-amber-500/50 transition-colors" />
+                      </div>
                     </div>
-                    <div className="col-span-4 sm:col-span-2">
-                      {i === 0 && <Label className="text-xs text-gray-400 mb-1 block">Unit Cost (R)</Label>}
+
+                    <div className="w-24">
+                      <Label className="text-xs text-gray-400 mb-1 block">Unit Cost (R)</Label>
                       <Input
-                        id={`product-cost-${p.id}`}
                         type="number"
                         min={0}
-                        className="bg-white/5 border-white/10 text-white"
-                        placeholder="0.00"
                         value={p.unitCost || ""}
                         onChange={(e) => updateProduct(p.id, "unitCost", parseFloat(e.target.value) || 0)}
+                        className="bg-white/5 border-white/10 text-white"
                       />
                     </div>
-                    <div className="col-span-4 sm:col-span-2">
-                      {i === 0 && <Label className="text-xs text-gray-400 mb-1 block">Weight (kg)</Label>}
+
+                    <div className="w-20">
+                      <Label className="text-xs text-gray-400 mb-1 block">Markup %</Label>
                       <Input
-                        id={`product-weight-${p.id}`}
                         type="number"
                         min={0}
-                        step={0.01}
-                        className="bg-white/5 border-white/10 text-white"
-                        placeholder="0.00"
-                        value={p.weightKg || ""}
-                        onChange={(e) => updateProduct(p.id, "weightKg", parseFloat(e.target.value) || 0)}
+                        value={p.markupPercent || ""}
+                        onChange={(e) => updateProduct(p.id, "markupPercent", parseFloat(e.target.value) || 0)}
+                        className="bg-white/5 border-amber-500/20 text-amber-300 focus:border-amber-500"
                       />
                     </div>
-                    <div className="col-span-2 sm:col-span-1">
-                      {i === 0 && <Label className="text-xs text-gray-400 mb-1 block">Qty</Label>}
+
+                    <div className="w-20">
+                      <Label className="text-xs text-gray-400 mb-1 block">Weight (kg)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={p.weightKg || ""}
+                        onChange={(e) => updateProduct(p.id, "weightKg", parseFloat(e.target.value) || 0)}
+                        className="bg-white/5 border-white/10 text-white"
+                      />
+                    </div>
+
+                    <div className="w-20">
+                      <Label className="text-xs text-gray-400 mb-1 block">Qty</Label>
                       <Input
                         id={`product-qty-${p.id}`}
                         type="number"
                         min={1}
-                        className="bg-white/5 border-white/10 text-white px-2"
+                        className="bg-white/5 border-white/10 text-white px-2 text-center"
                         value={p.quantity || ""}
                         onChange={(e) => updateProduct(p.id, "quantity", parseInt(e.target.value) || 1)}
                       />
@@ -1088,7 +1110,11 @@ const PriceQuoteCalculator = () => {
                 {/* Breakdown rows */}
                 <div className="space-y-3">
                   <SummaryRow label="Products Total" value={productsTotal} />
-                  <SummaryRow label={`Markup (${markupPercent}%)`} value={markupAmount} highlight />
+                  <SummaryRow 
+                    label="Profit Markup (Itemized)" 
+                    value={markupAmount} 
+                    highlight 
+                  />
                   <Separator className="bg-white/10" />
                   <SummaryRow label="Products + Markup" value={subtotal} bold />
                   <SummaryRow label={`Labour${labourIsPercent ? ` (${labourValue}%)` : ""}`} value={labourCost} />
