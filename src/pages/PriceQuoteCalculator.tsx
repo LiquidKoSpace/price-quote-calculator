@@ -165,7 +165,7 @@ const PriceQuoteCalculator = () => {
             description: d.description || "",
             unitCost: Number(d.unit_cost),
             weightKg: Number(d.weight_kg) || 0,
-            markupPercent: Number(d.markup_percent) ?? 30,
+            markupPercent: Number(d.markup_percent || 30),
             quantity: 1,
           }));
           setSavedCatalog(formatted);
@@ -400,9 +400,9 @@ const PriceQuoteCalculator = () => {
       text += `  • ${p.name || "Unnamed"} (${p.weightKg}kg)${p.description ? ` — ${p.description}` : ""}\n`;
       text += `    ${p.quantity} × ${fmt(p.unitCost)} (+${p.markupPercent}% markup) = ${fmt(sub)}\n`;
     });
-    text += `  Products Total: ${fmt(productsTotal)}\n`;
-    text += `  Markup (${markupPercent}%): ${fmt(markupAmount)}\n`;
-    text += `  Products + Markup: ${fmt(subtotal)}\n\n`;
+    text += `  Products Total Cost: ${fmt(productsTotal)}\n`;
+    text += `  Total Profit Markup: ${fmt(markupAmount)}\n`;
+    text += `  Selling Price of Goods: ${fmt(subtotal)}\n\n`;
     text += `LABOUR: ${fmt(labourCost)}${labourIsPercent ? ` (${labourValue}%)` : ""}\n\n`;
     text += `SHIPPING\n`;
     text += `  From: ${(originGeo?.formatted ?? buildAddressString(originAddr)) || "—"}\n`;
@@ -433,7 +433,6 @@ const PriceQuoteCalculator = () => {
       quantity: p.quantity
     })),
     productsTotal,
-    markupPercent,
     markupAmount,
     subtotal,
     labourIsPercent,
@@ -832,46 +831,7 @@ const PriceQuoteCalculator = () => {
             </CardContent>
           </Card>
 
-          {/* ─── 2. Markup (on products only) ─── */}
-          <Card className="bg-white/[0.04] border-white/10 backdrop-blur-lg shadow-2xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg text-amber-300">
-                <Percent className="w-5 h-5" /> Profit Markup
-                <span className="text-xs font-normal text-gray-500 ml-2">(applied to products only)</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <Slider
-                    id="markup-slider"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={[markupPercent]}
-                    onValueChange={([v]) => setMarkupPercent(v)}
-                    className="[&_[role=slider]]:bg-amber-400 [&_[role=slider]]:border-amber-500 [&_.range]:bg-amber-500"
-                  />
-                </div>
-                <div className="w-20">
-                  <Input
-                    id="markup-input"
-                    type="number"
-                    min={0}
-                    max={200}
-                    className="bg-white/5 border-white/10 text-white text-center"
-                    value={markupPercent}
-                    onChange={(e) => setMarkupPercent(Math.max(0, parseInt(e.target.value) || 0))}
-                  />
-                </div>
-                <span className="text-gray-400 text-sm">%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Markup on products total of {fmt(productsTotal)}</span>
-                <span className="text-emerald-400 font-medium">+{fmt(markupAmount)}</span>
-              </div>
-            </CardContent>
-          </Card>
+
 
           {/* ─── 3. Labour Cost ─── */}
           <Card className="bg-white/[0.04] border-white/10 backdrop-blur-lg shadow-2xl">
@@ -997,7 +957,7 @@ const PriceQuoteCalculator = () => {
                         <div className="text-xs text-gray-400 text-right">
                           Matched Tier:{" "}
                           <span className="text-amber-300">{activeTier.label}</span>{" "}
-                          @ R{activeTier.ratePerKg}/kg
+                          (@ {fmt(activeTier.baseRate)} Base)
                         </div>
                       )}
                     </div>
@@ -1133,13 +1093,11 @@ const PriceQuoteCalculator = () => {
                 </div>
 
                 {/* Margin info */}
-                {finalPrice > 0 && (
+                {finalPrice > 0 && productsTotal + markupAmount > 0 && (
                   <div className="bg-white/[0.04] rounded-lg px-4 py-3 border border-white/5 text-center">
-                    <div className="text-xs text-gray-400">Profit on Products</div>
+                    <div className="text-xs text-gray-400">Total Profit Margin</div>
                     <div className="text-lg font-semibold text-emerald-400">
-                      {markupPercent > 0
-                        ? `${((markupAmount / (productsTotal + markupAmount)) * 100).toFixed(1)}%`
-                        : "0.0%"}
+                      {`${((markupAmount / (productsTotal + markupAmount)) * 100).toFixed(1)}%`}
                     </div>
                   </div>
                 )}
