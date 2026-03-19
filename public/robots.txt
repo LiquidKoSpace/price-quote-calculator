@@ -1,0 +1,11 @@
+# Liquid Ko Space - Robots.txt
+# https://liquidkospace.co.za
+
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://liquidkospace.co.za/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
