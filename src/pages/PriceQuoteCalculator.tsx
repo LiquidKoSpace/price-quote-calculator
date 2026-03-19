@@ -44,6 +44,7 @@ interface ProductLine {
   weightKg: number;
   markupPercent: number; // Individual markup
   quantity: number;
+  dbId?: string; // Reference to database ID
 }
 
 interface ShippingAddress {
@@ -179,6 +180,7 @@ const PriceQuoteCalculator = () => {
             weightKg: Number(d.weight_kg) || 0,
             markupPercent: Number(d.markup_percent || 30),
             quantity: 1,
+            dbId: d.id, // Store database ID
           }));
           setSavedCatalog(formatted);
         }
@@ -229,8 +231,24 @@ const PriceQuoteCalculator = () => {
   };
 
   const loadFromCatalog = (catalogItem: ProductLine) => {
-    setProducts((p) => [...p, { ...catalogItem, id: uid(), quantity: 1 }]);
+    setProducts((p) => [...p, { ...catalogItem, id: uid(), quantity: 1, dbId: catalogItem.dbId }]);
     toast({ title: "Added to Quote", description: `"${catalogItem.name}" was added.` });
+  };
+
+  const deleteProductFromDatabase = async (dbId: string, name: string) => {
+    try {
+      const { error } = await supabase.from("products").delete().eq("id", dbId);
+      if (error) throw error;
+      
+      setSavedCatalog(prev => prev.filter(x => x.dbId !== dbId));
+      // Also clear dbId from active products if they matched this one
+      setProducts(prev => prev.map(p => p.dbId === dbId ? { ...p, dbId: undefined } : p));
+      
+      toast({ title: "Deleted", description: `"${name}" removed from catalog.` });
+    } catch (err) {
+      console.error("Delete error:", err);
+      toast({ title: "Error", description: "Could not delete product from database.", variant: "destructive" });
+    }
   };
 
   const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -843,6 +861,18 @@ const PriceQuoteCalculator = () => {
                       >
                         <Save className="w-4 h-4" />
                       </Button>
+                      {p.dbId && (
+                        <Button
+                          id={`delete-product-${p.dbId}`}
+                          variant="ghost"
+                          size="icon"
+                          title="Delete FROM CATALOG (Database)"
+                          className="text-gray-500 hover:text-orange-500 hover:bg-orange-500/10 h-9 w-9"
+                          onClick={() => deleteProductFromDatabase(p.dbId!, p.name)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         id={`remove-product-${p.id}`}
                         variant="ghost"
