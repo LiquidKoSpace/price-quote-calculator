@@ -10,7 +10,8 @@ export interface City {
 
 export interface RateTier {
   maxDistanceKm: number; // use Infinity for the final tier
-  ratePerKg: number;
+  baseRate: number;      // Fixed cost for up to 5kg
+  incrementalFee: number; // Cost per kg for weight over 5kg
   label: string;
 }
 
@@ -48,17 +49,17 @@ export const SA_CITIES: City[] = [
   { id: "upington", name: "Upington", province: "Northern Cape", lat: -28.4572, lng: 21.2567 },
 ];
 
-// Default rate tiers – user can override these in the UI
 export const DEFAULT_RATE_TIERS: RateTier[] = [
-  { maxDistanceKm: 50, ratePerKg: 8, label: "0 – 50 km" },
-  { maxDistanceKm: 200, ratePerKg: 12, label: "51 – 200 km" },
-  { maxDistanceKm: 500, ratePerKg: 18, label: "201 – 500 km" },
-  { maxDistanceKm: 1000, ratePerKg: 25, label: "501 – 1 000 km" },
-  { maxDistanceKm: 1500, ratePerKg: 32, label: "1 001 – 1 500 km" },
-  { maxDistanceKm: Infinity, ratePerKg: 40, label: "1 500 km +" },
+  { maxDistanceKm: 50, baseRate: 95, incrementalFee: 6.5, label: "0 – 50 km" },
+  { maxDistanceKm: 200, baseRate: 125, incrementalFee: 8.5, label: "51 – 200 km" },
+  { maxDistanceKm: 500, baseRate: 160, incrementalFee: 11, label: "201 – 500 km" },
+  { maxDistanceKm: 1000, baseRate: 195, incrementalFee: 14, label: "501 – 1 000 km" },
+  { maxDistanceKm: 1500, baseRate: 235, incrementalFee: 17, label: "1 001 – 1 500 km" },
+  { maxDistanceKm: Infinity, baseRate: 285, incrementalFee: 21, label: "1 500 km +" },
 ];
 
-export const MINIMUM_SHIPPING_CHARGE = 50; // R50 minimum
+export const SHIPPING_BASE_WEIGHT_LIMIT = 5; // 5kg included in base rate
+export const MINIMUM_SHIPPING_CHARGE = 0; // The base rate is essentially the minimum now
 
 /**
  * Haversine distance between two coordinates in kilometres.
@@ -101,18 +102,19 @@ export function calculateDistance(originId: string, destinationId: string): numb
   return calculateDistanceFromCoords(origin.lat, origin.lng, dest.lat, dest.lng);
 }
 
-/**
- * Calculate shipping cost based on distance and weight.
- */
 export function calculateShippingCost(
   distanceKm: number,
   weightKg: number,
   rateTiers: RateTier[] = DEFAULT_RATE_TIERS,
-  minimumCharge: number = MINIMUM_SHIPPING_CHARGE
+  baseWeightLimit: number = SHIPPING_BASE_WEIGHT_LIMIT
 ): number {
   if (distanceKm <= 0 || weightKg <= 0) return 0;
 
   const tier = rateTiers.find((t) => distanceKm <= t.maxDistanceKm) ?? rateTiers[rateTiers.length - 1];
-  const cost = tier.ratePerKg * weightKg;
-  return Math.max(cost, minimumCharge);
+  
+  // Logic: Base Rate + (Remaining Weight * Incremental Fee)
+  const excessWeight = Math.max(0, weightKg - baseWeightLimit);
+  const cost = tier.baseRate + (excessWeight * tier.incrementalFee);
+  
+  return cost;
 }

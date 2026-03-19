@@ -237,7 +237,6 @@ const PriceQuoteCalculator = () => {
   const [rateTiers, setRateTiers] = useState<RateTier[]>(() =>
     DEFAULT_RATE_TIERS.map((t) => ({ ...t }))
   );
-  const [minCharge, setMinCharge] = useState(MINIMUM_SHIPPING_CHARGE);
 
   // Markup
   const [markupPercent, setMarkupPercent] = useState(30);
@@ -277,8 +276,8 @@ const PriceQuoteCalculator = () => {
   const shippingCost = useMemo(() => {
     if (shippingOverride) return customShipping;
     if (distanceKm <= 0) return 0;
-    return calculateShippingCost(distanceKm, weight, rateTiers, minCharge);
-  }, [shippingOverride, customShipping, distanceKm, weight, rateTiers, minCharge]);
+    return calculateShippingCost(distanceKm, weight, rateTiers);
+  }, [shippingOverride, customShipping, distanceKm, weight, rateTiers]);
 
   // ── MARKUP ON PRODUCTS ONLY ──
   const markupAmount = (markupPercent / 100) * productsTotal;
@@ -358,8 +357,10 @@ const PriceQuoteCalculator = () => {
 
   // ── Rate tier update ─────
 
-  const updateTierRate = (index: number, newRate: number) => {
-    setRateTiers((prev) => prev.map((t, i) => (i === index ? { ...t, ratePerKg: newRate } : t)));
+  const updateTierRate = (index: number, field: "baseRate" | "incrementalFee", val: number) => {
+    setRateTiers((prev) =>
+      prev.map((t, i) => (i === index ? { ...t, [field]: val } : t))
+    );
   };
 
   // ── Reset ─────
@@ -1038,30 +1039,35 @@ const PriceQuoteCalculator = () => {
                         <div className={`text-xs font-medium mb-1.5 ${activeTier === t ? "text-amber-300" : "text-gray-400"}`}>
                           {t.label}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500">R</span>
-                          <Input
-                            type="number"
-                            min={0}
-                            step={0.5}
-                            className="h-7 bg-white/5 border-white/10 text-white text-sm px-2 w-16"
-                            value={t.ratePerKg}
-                            onChange={(e) => updateTierRate(i, parseFloat(e.target.value) || 0)}
-                          />
-                          <span className="text-xs text-gray-500">/kg</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-gray-500 w-8">Base:</span>
+                            <span className="text-xs text-gray-500">R</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="h-6 bg-white/5 border-white/10 text-white text-xs px-1 w-14"
+                              value={t.baseRate}
+                              onChange={(e) => updateTierRate(i, "baseRate", parseFloat(e.target.value) || 0)}
+                            />
+                            <span className="text-[10px] text-gray-500">(up to 5kg)</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-gray-500 w-8">Excess:</span>
+                            <span className="text-xs text-gray-500">R</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              className="h-6 bg-white/5 border-white/10 text-white text-xs px-1 w-14"
+                              value={t.incrementalFee}
+                              onChange={(e) => updateTierRate(i, "incrementalFee", parseFloat(e.target.value) || 0)}
+                            />
+                            <span className="text-[10px] text-gray-500">/kg extra</span>
+                          </div>
                         </div>
                       </div>
                     ))}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="text-xs text-gray-500">Minimum charge: R</span>
-                    <Input
-                      type="number"
-                      min={0}
-                      className="h-7 bg-white/5 border-white/10 text-white text-sm px-2 w-20"
-                      value={minCharge}
-                      onChange={(e) => setMinCharge(parseFloat(e.target.value) || 0)}
-                    />
                   </div>
                 </div>
               )}
@@ -1086,7 +1092,11 @@ const PriceQuoteCalculator = () => {
                   <Separator className="bg-white/10" />
                   <SummaryRow label="Products + Markup" value={subtotal} bold />
                   <SummaryRow label={`Labour${labourIsPercent ? ` (${labourValue}%)` : ""}`} value={labourCost} />
-                  <SummaryRow label="Shipping" value={shippingCost} />
+                  <SummaryRow 
+                    label="Shipping" 
+                    value={shippingCost} 
+                    subLabel={!shippingOverride && activeTier ? `${fmt(activeTier.baseRate)} Base + ${fmt(Math.max(0, weight - 5) * activeTier.incrementalFee)} Excess` : ""}
+                  />
                   <Separator className="bg-amber-500/30" />
                   <div className="flex justify-between items-center pt-1">
                     <span className="text-base font-bold text-white">Final Selling Price</span>
@@ -1160,15 +1170,20 @@ function SummaryRow({
   value,
   bold,
   highlight,
+  subLabel,
 }: {
   label: string;
   value: number;
   bold?: boolean;
   highlight?: boolean;
+  subLabel?: string;
 }) {
   return (
-    <div className="flex justify-between items-center">
-      <span className={`text-sm ${bold ? "font-semibold text-white" : "text-gray-400"}`}>{label}</span>
+    <div className={`flex justify-between items-center ${subLabel ? "items-start" : "items-center"}`}>
+      <div className="flex flex-col">
+        <span className={`text-sm ${bold ? "font-semibold text-white" : "text-gray-400"}`}>{label}</span>
+        {subLabel && <span className="text-[10px] text-gray-500 italic">{subLabel}</span>}
+      </div>
       <span
         className={`text-sm font-medium ${
           highlight ? "text-amber-300" : bold ? "text-white" : "text-gray-300"
