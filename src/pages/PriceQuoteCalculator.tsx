@@ -14,6 +14,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   DEFAULT_RATE_TIERS,
   MINIMUM_SHIPPING_CHARGE,
   calculateDistanceFromCoords,
@@ -286,6 +297,19 @@ const PriceQuoteCalculator = () => {
       }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const handleClearCatalog = async () => {
+    try {
+      const { error } = await supabase.from("products").delete().neq("id", "00000000-0000-0000-0000-000000000000"); // Delete all
+      if (error) throw error;
+      
+      setSavedCatalog([]);
+      toast({ title: "Catalog Cleared", description: "All products have been removed from your database." });
+    } catch (err) {
+      console.error("Clear catalog error:", err);
+      toast({ title: "Delete Failed", description: "Could not clear the catalog. Check your connection.", variant: "destructive" });
+    }
   };
 
   // Labour
@@ -907,6 +931,37 @@ const PriceQuoteCalculator = () => {
                     Headers: "Product Name", "Unit Cost (R)", "Weight (kg)"
                   </p>
                 </div>
+
+                {/* Clear Catalog Button */}
+                {savedCatalog.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full text-xs text-red-400/60 hover:text-red-400 hover:bg-red-400/10 mt-2"
+                      >
+                        <Trash2 className="w-3 h-3 mr-2" /> Clear All Products
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-gray-900 border-white/10 text-white">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400">
+                          This will permanently delete all {savedCatalog.length} products from your database. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10">Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                          onClick={handleClearCatalog}
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          Yes, Delete All
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
 
               <div className="flex justify-end pt-1">
