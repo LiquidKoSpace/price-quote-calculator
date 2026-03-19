@@ -21,6 +21,7 @@ import {
   type RateTier,
 } from "@/lib/shippingData";
 import { exportQuoteToPDF, exportQuoteToExcel, type QuoteExportData } from "@/lib/exportUtils";
+import * as XLSX from "xlsx";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -219,6 +220,72 @@ const PriceQuoteCalculator = () => {
   const loadFromCatalog = (catalogItem: ProductLine) => {
     setProducts((p) => [...p, { ...catalogItem, id: uid(), quantity: 1 }]);
     toast({ title: "Added to Quote", description: `"${catalogItem.name}" was added.` });
+  };
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        if (!data || data.length === 0) {
+          toast({ title: "Empty file", description: "No data found in the uploaded file.", variant: "destructive" });
+          return;
+        }
+
+        const loadingToast = toast({ title: "Importing...", description: `Processing ${data.length} products...` });
+
+        const formatted = data.map((row: any) => {
+          // Fuzzy mapping for common headers
+          const name = row["Product Name"] || row["name"] || row["Name"] || "";
+          const desc = row["Product Description"] || row["description"] || row["Description"] || "";
+          const cost = parseFloat(row["Unit Cost (R)"] || row["unit_cost"] || row["Cost"] || row["Unit Cost"] || "0");
+          const weight = parseFloat(row["Weight (kg)"] || row["weight_kg"] || row["Weight"] || row["Weight (kg)"] || "0");
+          const markup = parseFloat(row["Markup %"] || row["markup_percent"] || row["Markup"] || "30");
+
+          return {
+            id: uid(),
+            name: String(name).trim(),
+            description: String(desc).trim(),
+            unit_cost: cost,
+            weight_kg: weight,
+            markup_percent: markup
+          };
+        }).filter(item => item.name); // must have a name
+
+        const { error } = await supabase.from("products").upsert(formatted as any);
+        if (error) throw error;
+
+        // Refresh catalog
+        const { data: newData } = await supabase.from("products").select("*").order("name");
+        if (newData) {
+          setSavedCatalog(newData.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            description: d.description || "",
+            unitCost: Number(d.unit_cost),
+            weightKg: Number(d.weight_kg) || 0,
+            markupPercent: Number(d.markup_percent || 30),
+            quantity: 1,
+          })));
+        }
+
+        toast({ title: "Import Successful!", description: `Succesfully imported ${formatted.length} products to your catalog.` });
+      } catch (err) {
+        console.error("Bulk upload error:", err);
+        toast({ title: "Import Failed", description: "Make sure your headers match (e.g. 'Product Name', 'Unit Cost (R)').", variant: "destructive" });
+      } finally {
+        e.target.value = ""; // clear input
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
   // Labour
@@ -820,6 +887,26 @@ const PriceQuoteCalculator = () => {
                     <Library className="w-4 h-4 mr-2" /> Catalog Empty
                   </Button>
                 )}
+                
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="file"
+                    id="bulk-import-input"
+                    className="hidden"
+                    accept=".csv, .xlsx, .xls"
+                    onChange={handleBulkUpload}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById("bulk-import-input")?.click()}
+                    className="w-full border-white/10 text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    <Download className="w-4 h-4 mr-2 rotate-180" /> Bulk Import (Excel/CSV)
+                  </Button>
+                  <p className="text-[10px] text-gray-600 text-center italic">
+                    Headers: "Product Name", "Unit Cost (R)", "Weight (kg)"
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end pt-1">
